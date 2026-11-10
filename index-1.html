@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>งานเลี้ยงรุ่น · ระบบ Token</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@500;700&family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+:root{--blue:#1F3FBF;--sun:#FFC93C;--ink:#14161F;--bg:#F2F4FB;--red:#D62F3A;--green:#16874B;--card:#fff}
+*{box-sizing:border-box}
+body{margin:0;font:17px/1.5 Sarabun,sans-serif;background:var(--bg);color:var(--ink)}
+h1,h2,h3,button,.tab{font-family:Kanit,sans-serif}
+header{background:var(--blue);color:#fff;padding:18px 16px 0}
+header h1{margin:0;font-size:26px;font-weight:700}
+header p{margin:2px 0 12px;opacity:.85;font-size:15px}
+nav{display:flex;gap:4px;overflow-x:auto}
+.tab{flex:1;min-width:84px;border:0;background:#162d8a;color:#cfd8ff;padding:10px 8px;font-size:15px;border-radius:10px 10px 0 0;cursor:pointer}
+.tab.on{background:var(--bg);color:var(--blue);font-weight:700}
+main{max-width:560px;margin:0 auto;padding:18px 16px 60px}
+h2{margin:0 0 12px;font-size:22px}
+input,textarea{width:100%;font:inherit;padding:11px 12px;border:2px solid #c9d0ea;border-radius:10px;background:#fff}
+input:focus,textarea:focus,button:focus-visible{outline:3px solid var(--sun);outline-offset:1px}
+button.p{background:var(--blue);color:#fff;border:0;border-radius:10px;padding:11px 18px;font-size:17px;cursor:pointer}
+button.s{background:#fff;color:var(--blue);border:2px solid var(--blue);border-radius:10px;padding:9px 14px;font-size:15px;cursor:pointer}
+.row{display:flex;gap:8px;margin:10px 0}.row>input{flex:1}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.chips button{background:#fff;border:2px solid #c9d0ea;border-radius:99px;padding:6px 16px;font-size:16px;cursor:pointer}
+.chips button.on{background:var(--sun);border-color:var(--sun);font-weight:700}
+#reader{width:100%;border-radius:12px;overflow:hidden;background:#000;min-height:40px}
+.res{margin-top:12px;padding:14px;border-radius:12px;font-family:Kanit,sans-serif;font-size:19px;display:none}
+.res.ok{display:block;background:#DDF4E6;color:var(--green)}.res.bad{display:block;background:#FDE2E4;color:var(--red)}
+.ticket{background:var(--card);border-radius:16px;display:grid;grid-template-columns:1fr auto;border:2px solid var(--ink);position:relative;overflow:hidden;margin:14px 0}
+.ticket .l{padding:16px}.ticket .r{padding:16px;border-left:2px dashed var(--ink);display:flex;align-items:center}
+.ticket h3{margin:0;font-size:22px}.ticket small{color:#555}
+.bal{font:700 44px/1 Kanit;color:var(--blue);margin:8px 0 0}.bal span{font-size:16px;font-weight:500;color:var(--ink)}
+.tag{display:inline-block;padding:2px 10px;border-radius:99px;font-size:14px;background:#e3e6f2}.tag.in{background:#DDF4E6;color:var(--green)}
+table{width:100%;border-collapse:collapse;font-size:15px;background:#fff;border-radius:10px;overflow:hidden}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #e3e6f2}th{background:#e3e6f2}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.stats div{background:#fff;border-radius:12px;padding:10px 12px}.stats b{display:block;font:700 26px Kanit;color:var(--blue)}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:99px;opacity:0;transition:.2s;pointer-events:none}
+#toast.show{opacity:1}
+#pa{display:none;grid-template-columns:1fr 1fr;gap:10px;padding:10px}
+body.printing header,body.printing main{display:none}body.printing #pa{display:grid}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>งานเลี้ยงรุ่น</h1>
+  <p>บัตรเข้างาน · เติม token · จ่ายด้วย QR</p>
+  <nav id="nav"></nav>
+</header>
+<main id="app"></main>
+<div id="pa"></div>
+<div id="toast"></div>
+
+<script>
+/* ===== ตั้งค่า ===== */
+const CFG = {
+  EVENT: "งานเลี้ยงรุ่น",
+  PIN: "1234",          // รหัสสตาฟ (เปลี่ยนก่อนใช้งานจริง)
+  FIREBASE: null        // ใส่ firebaseConfig เพื่อใช้หลายเครื่องพร้อมกัน (ดูวิธีใน README) เช่น {apiKey:"...",projectId:"..."}
+};
+
+/* ===== ข้อมูล ===== */
+const $ = s => document.querySelector(s);
+let guests = {}, fs = null, tab = "me", staff = false, scanner = null, last = 0;
+let myId = new URLSearchParams(location.search).get("id") || localStorage.getItem("myId") || "";
+const fmt = t => new Date(t).toLocaleTimeString("th-TH", {hour:"2-digit", minute:"2-digit"});
+const persist = () => localStorage.setItem("guests", JSON.stringify(guests));
+
+async function initStore() {
+  if (CFG.FIREBASE) {
+    firebase.initializeApp(CFG.FIREBASE);
+    fs = firebase.firestore();
+    fs.collection("guests").onSnapshot(s => {
+      s.docChanges().forEach(c => c.type === "removed" ? delete guests[c.doc.id] : guests[c.doc.id] = c.doc.data());
+      refresh();
+    });
+  } else {
+    guests = JSON.parse(localStorage.getItem("guests") || "{}");
+  }
+}
+async function create(name) {
+  const g = {id: "RU-" + Math.random().toString(36).slice(2, 7).toUpperCase(), name, tokens: 0, bought: 0, spent: 0, in: 0, log: []};
+  if (fs) await fs.collection("guests").doc(g.id).set(g); else { guests[g.id] = g; persist(); }
+  return g;
+}
+/* แก้ข้อมูลบัตรแบบปลอดภัย (ใช้ transaction เมื่อใช้ Firebase) */
+async function mutate(id, fn) {
+  if (fs) {
+    const ref = fs.collection("guests").doc(id);
+    return fs.runTransaction(async t => {
+      const d = await t.get(ref);
+      if (!d.exists) throw Error("ไม่พบบัตรนี้");
+      const g = d.data(); fn(g); t.set(ref, g); return g;
+    });
+  }
+  const g = guests[id]; if (!g) throw Error("ไม่พบบัตรนี้");
+  fn(g); persist(); return g;
+}
+function adjust(g, d) {
+  if (g.tokens + d < 0) throw Error(`${g.name}: token ไม่พอ (เหลือ ${g.tokens})`);
+  g.tokens += d; d > 0 ? g.bought += d : g.spent -= d;
+  g.log = [...(g.log || []).slice(-9), {t: Date.now(), d}];
+}
+
+/* ===== UI พื้นฐาน ===== */
+const TABS = [["me","บัตรของฉัน"],["in","เช็คอิน"],["top","เติม token"],["pay","ตัด token"],["adm","จัดการ"]];
+function drawNav() {
+  $("#nav").innerHTML = TABS.map(([k, n]) => `<button class="tab ${k === tab ? "on" : ""}" data-k="${k}">${n}</button>`).join("");
+  $("#nav").onclick = e => e.target.dataset.k && go(e.target.dataset.k);
+}
+function toast(m) { const t = $("#toast"); t.textContent = m; t.className = "show"; clearTimeout(toast.t); toast.t = setTimeout(() => t.className = "", 2500); }
+function go(k) {
+  if (k !== "me" && !staff) {
+    if (prompt("รหัสสตาฟ") !== CFG.PIN) return toast("รหัสไม่ถูกต้อง");
+    staff = true;
+  }
+  stopScan(); tab = k; drawNav();
+  ({me: viewMe, in: viewIn, top: viewTop, pay: viewPay, adm: viewAdm})[k]();
+}
+function refresh() { if (tab === "me") showCard(); if (tab === "adm") showStats(); }
+
+/* ===== สแกน ===== */
+function stopScan() { if (scanner) { scanner.stop().catch(() => {}); scanner = null; } }
+function scanView(title, ctrl, handler) {
+  $("#app").innerHTML = `<h2>${title}</h2>${ctrl}<div id="reader"></div>
+    <div class="row"><input id="man" placeholder="หรือพิมพ์รหัสบัตร เช่น RU-AB12C"><button class="p" id="okb">ตกลง</button></div><div id="res" class="res"></div>`;
+  const run = async raw => {
+    const id = raw.trim().toUpperCase(), r = $("#res");
+    try { r.textContent = await handler(id); r.className = "res ok"; }
+    catch (e) { r.textContent = e.message; r.className = "res bad"; }
+  };
+  $("#okb").onclick = () => { run($("#man").value); $("#man").value = ""; };
+  scanner = new Html5Qrcode("reader");
+  scanner.start({facingMode: "environment"}, {fps: 10, qrbox: {width: 230, height: 230}}, txt => {
+    if (Date.now() - last < 2000) return; last = Date.now(); run(txt);
+  }, () => {}).catch(() => toast("เปิดกล้องไม่ได้ ใช้ช่องพิมพ์รหัสแทน"));
+}
+function amtCtrl(presets, def) {
+  return `<div class="chips" id="chips">${presets.map(v => `<button data-v="${v}" class="${v === def ? "on" : ""}">${v}</button>`).join("")}</div>
+  <input id="amt" type="number" min="1" value="${def}" aria-label="จำนวน token">`;
+}
+function bindChips() {
+  $("#chips").onclick = e => { if (!e.target.dataset.v) return; $("#amt").value = e.target.dataset.v;
+    [...$("#chips").children].forEach(b => b.classList.toggle("on", b === e.target)); };
+}
+const getAmt = () => { const n = Math.floor(Number($("#amt").value)); if (!(n > 0)) throw Error("ใส่จำนวนให้ถูกต้อง"); return n; };
+
+/* ===== หน้าต่าง ๆ ===== */
+function cardHTML(g) {
+  return `<div class="ticket"><div class="l"><small>${CFG.EVENT}</small><h3>${g.name}</h3>
+    <span class="tag ${g.in ? "in" : ""}">${g.in ? "เข้างานแล้ว " + fmt(g.in) : "ยังไม่เช็คอิน"}</span>
+    <div class="bal">${g.tokens} <span>token</span></div><small>${g.id}</small></div>
+    <div class="r"><div class="qr" data-id="${g.id}"></div></div></div>`;
+}
+function drawQR(root) {
+  root.querySelectorAll(".qr").forEach(el => { el.innerHTML = ""; new QRCode(el, {text: el.dataset.id, width: 120, height: 120}); });
+}
+function viewMe() {
+  $("#app").innerHTML = `<h2>บัตรของฉัน</h2><div id="card"></div>
+    <div id="reg"><p>ยังไม่มีบัตร? ใส่ชื่อแล้วสร้างบัตรได้เลย</p>
+    <div class="row"><input id="nm" placeholder="ชื่อ-ชื่อเล่น"><button class="p" id="mk">สร้างบัตร</button></div>
+    <p>มีบัตรอยู่แล้ว? ใส่รหัสบัตร</p>
+    <div class="row"><input id="fid" placeholder="RU-XXXXX"><button class="s" id="fd">ค้นหา</button></div></div>`;
+  $("#mk").onclick = async () => {
+    const n = $("#nm").value.trim(); if (!n) return toast("ใส่ชื่อก่อน");
+    myId = (await create(n)).id; localStorage.setItem("myId", myId); showCard();
+  };
+  $("#fd").onclick = () => {
+    const id = $("#fid").value.trim().toUpperCase();
+    if (!guests[id]) return toast("ไม่พบรหัสนี้"); myId = id; localStorage.setItem("myId", id); showCard();
+  };
+  showCard();
+}
+function showCard() {
+  const g = guests[myId], c = $("#card"); if (!c) return;
+  $("#reg").style.display = g ? "none" : "block";
+  c.innerHTML = g ? cardHTML(g) + `<p><small>แสดง QR นี้ตอนเข้างานและตอนซื้อของ · ยอดอัปเดตเมื่อสตาฟสแกน</small></p>` : "";
+  drawQR(c);
+}
+function viewIn() {
+  scanView("เช็คอินเข้างาน", "", id => mutate(id, g => {
+    if (g.in) throw Error(`${g.name} เช็คอินไปแล้วเมื่อ ${fmt(g.in)}`);
+    g.in = Date.now(); last = 0;
+  }).then(g => `✓ ${g.name} เข้างานแล้ว`));
+}
+function viewTop() {
+  scanView("เติม token", amtCtrl([10, 20, 50, 100], 20), id => {
+    const n = getAmt();
+    return mutate(id, g => adjust(g, n)).then(g => `+${n} → ${g.name} มี ${g.tokens} token`);
+  });
+  bindChips();
+}
+function viewPay() {
+  scanView("ตัด token", amtCtrl([1, 2, 3, 5], 1), id => {
+    const n = getAmt();
+    return mutate(id, g => adjust(g, -n)).then(g => `−${n} → ${g.name} เหลือ ${g.tokens} token`);
+  });
+  bindChips();
+}
+function viewAdm() {
+  $("#app").innerHTML = `<h2>จัดการและรายงาน</h2>
+    <p>${fs ? "โหมดออนไลน์: ข้อมูลใช้ร่วมกันทุกเครื่อง" : "โหมดเครื่องเดียว: ข้อมูลอยู่ในเบราว์เซอร์เครื่องนี้เท่านั้น"}</p>
+    <textarea id="bulk" rows="4" placeholder="รายชื่อเพื่อน บรรทัดละ 1 คน"></textarea>
+    <div class="row"><button class="p" id="bk">สร้างบัตรและพิมพ์</button><button class="s" id="csv">ดาวน์โหลด CSV</button></div>
+    <div id="stats"></div>`;
+  $("#bk").onclick = async () => {
+    const names = $("#bulk").value.split("\n").map(s => s.trim()).filter(Boolean);
+    if (!names.length) return toast("ใส่รายชื่อก่อน");
+    const made = []; for (const n of names) made.push(await create(n));
+    $("#pa").innerHTML = made.map(cardHTML).join(""); drawQR($("#pa"));
+    $("#bulk").value = ""; setTimeout(() => { document.body.classList.add("printing"); print(); document.body.classList.remove("printing"); }, 400);
+  };
+  $("#csv").onclick = () => {
+    const rows = [["รหัส", "ชื่อ", "เข้างาน", "ซื้อ", "ใช้", "คงเหลือ"], ...Object.values(guests).map(g => [g.id, g.name, g.in ? fmt(g.in) : "", g.bought, g.spent, g.tokens])];
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["\ufeff" + rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n")], {type: "text/csv"}));
+    a.download = "reunion.csv"; a.click();
+  };
+  showStats();
+}
+function showStats() {
+  const el = $("#stats"); if (!el) return;
+  const L = Object.values(guests).sort((a, b) => a.name.localeCompare(b.name, "th"));
+  const sum = k => L.reduce((s, g) => s + (g[k] || 0), 0);
+  el.innerHTML = `<div class="stats"><div><b>${L.filter(g => g.in).length}/${L.length}</b>เช็คอิน/ทั้งหมด</div><div><b>${sum("bought")}</b>token ที่ขาย</div>
+    <div><b>${sum("spent")}</b>token ที่ใช้แล้ว</div><div><b>${sum("tokens")}</b>token ค้างในบัตร</div></div>
+    <table><tr><th>ชื่อ</th><th>รหัส</th><th>เข้า</th><th>เหลือ</th></tr>${L.map(g => `<tr><td>${g.name}</td><td>${g.id}</td><td>${g.in ? "✓" : ""}</td><td>${g.tokens}</td></tr>`).join("")}</table>`;
+}
+
+/* ===== เริ่มทำงาน ===== */
+initStore().then(() => { drawNav(); viewMe(); });
+</script>
+</body>
+</html>

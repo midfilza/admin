@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /guests/{id} {
+      // เปิดให้อ่าน/เขียนได้ชั่วคราวเฉพาะช่วงงาน แก้วันที่ให้เป็นวันหลังงานจบ 1-2 วัน
+      allow read, write: if request.time < timestamp.date(2026, 12, 31);
+    }
+  }
+}
